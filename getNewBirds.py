@@ -22,9 +22,7 @@ def get_new_birds(here, there, distance):
 
     here_geo = requests.get(
         'https://maps.googleapis.com/maps/api/geocode/json?address='+here+'&sensor=false').json()
-    # from pprint import pprint. then pprint(here_geo['results']) for a somewhat clearer print
-
-    from pprint import pprint
+    # pprint(here_geo['results']) for a somewhat clearer print
 
     there_geo = requests.get(
         'https://maps.googleapis.com/maps/api/geocode/json?address='+there+'&sensor=false').json()
@@ -43,17 +41,16 @@ def get_new_birds(here, there, distance):
                            lng=there_geo['results'][0]['geometry']['location']['lng'],
                            dist=distance)
 
-    # Extract common name, or scientific name is the former is not available
-    # If neither is available, returns 'None'.
-    here_birds = [x.get('comName', x.get('sciName')) for x in here_sightings]
-    there_birds = [x.get('comName', x.get('sciName')) for x in there_sightings]
+    # Allow for missing common name, returns 'None'
+    here_birds = [x.get('comName') for x in here_sightings]
+    there_birds = [x.get('comName') for x in there_sightings]
 
     new_birds = list(set(there_birds) - set(here_birds))
 
     print 'New birds:'
     pprint(new_birds)
 
-    # return new_birds
+    return new_birds
 
 def get_hotspots(location, max_distance):
     # location can be googlable name and distance must be in km
@@ -77,26 +74,6 @@ def get_hotspots(location, max_distance):
     return hotspots
 
 
-def bird_probability(birds, hotspot_id):
-
-    # get all recent checklists from a hotspot
-
-    sightings = ebird('data/obs/hotspot/recent',
-                          back=30,
-                          r=hotspot_id,
-                          detail='full',
-                          fmt='json')
-    # loop through birds
-    # determine in how many checklists bird was observed
-    return []
-
-
-    #
-    # if __name__ == '__main__': # prevent from executing when importing (or run when called as a script)
-    #     print 42
-    #     print 'hi alex'
-    #     print bird_probability(sys.argv)
-
 def get_distance(origin, destination):
     # origin and distance should be [lat, long] lists
     # Haversine formula example in Python
@@ -115,4 +92,37 @@ def get_distance(origin, destination):
 
     return d
 
-print get_new_birds('Philadelphia', 'San Francisco', 20)
+def bird_probability(birds, hotspot_id):
+
+    # get all recent checklists from a hotspot
+
+    sightings = ebird('data/obs/hotspot/recent',
+                          back=30,
+                          r=hotspot_id,
+                          detail='full',
+                          fmt='json')
+    # loop through birds
+    # determine in how many checklists bird was observed
+    return range(1,10,1)
+
+
+    #
+    # if __name__ == '__main__': # prevent from executing when importing (or run when called as a script)
+    #     print 42
+    #     print 'hi alex'
+    #     print bird_probability(sys.argv)
+
+# print get_new_birds('Philadelphia', 'San Francisco', 20)
+
+def show_probability(here, there, distance):
+
+    new_birds = get_new_birds(here, there, distance)
+    hotspots = get_hotspots(there, distance)
+
+    prob = [bird_probability(new_birds, x) for x in hotspots]
+
+
+    # next:
+    # 1) get a probability of observing a particular bird at each hotspot in the region
+    # 2) sort birds by probability (of first hotspot)
+    # 3) display bird, hotspot, probability, 2nd hotspot, probability
