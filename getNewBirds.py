@@ -23,6 +23,9 @@ def get_new_birds(here, there, distance):
     here_geo = requests.get(
         'https://maps.googleapis.com/maps/api/geocode/json?address='+here+'&sensor=false').json()
     # from pprint import pprint. then pprint(here_geo['results']) for a somewhat clearer print
+
+    from pprint import pprint
+
     there_geo = requests.get(
         'https://maps.googleapis.com/maps/api/geocode/json?address='+there+'&sensor=false').json()
 
@@ -40,16 +43,17 @@ def get_new_birds(here, there, distance):
                            lng=there_geo['results'][0]['geometry']['location']['lng'],
                            dist=distance)
 
-    here_birds = [x['comName'] for x in here_sightings]
-    there_sightings = [x['comName'] for x in there_sightings]
+    # Extract common name, or scientific name is the former is not available
+    # If neither is available, returns 'None'.
+    here_birds = [x.get('comName', x.get('sciName')) for x in here_sightings]
+    there_birds = [x.get('comName', x.get('sciName')) for x in there_sightings]
 
-    new_birds = list(set(there_sightings) - set(here_birds))
+    new_birds = list(set(there_birds) - set(here_birds))
 
     print 'New birds:'
-    print(new_birds)
+    pprint(new_birds)
 
-    return new_birds
-
+    # return new_birds
 
 def get_hotspots(location, max_distance):
     # location can be googlable name and distance must be in km
@@ -80,6 +84,7 @@ def bird_probability(birds, hotspot_id):
     sightings = ebird('data/obs/hotspot/recent',
                           back=30,
                           r=hotspot_id,
+                          detail='full',
                           fmt='json')
     # loop through birds
     # determine in how many checklists bird was observed
@@ -109,3 +114,5 @@ def get_distance(origin, destination):
     d = radius * c
 
     return d
+
+print get_new_birds('Philadelphia', 'San Francisco', 20)
