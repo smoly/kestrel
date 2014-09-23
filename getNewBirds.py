@@ -47,8 +47,8 @@ def get_new_birds(here, there, distance):
 
     new_birds = list(set(there_birds) - set(here_birds))
 
-    print 'New birds:'
-    pprint(new_birds)
+    # print 'New birds:'
+    # pprint(new_birds)
 
     return new_birds
 
@@ -62,6 +62,7 @@ def get_hotspots(location, max_distance):
     country_name = geo['results'][0]['address_components'][3]['short_name']
     state_name = geo['results'][0]['address_components'][2]['short_name']
 
+    # get all state hotspots
     state_hs = ebird('ref/hotspot/region',
         rtype='subnational1',
         r=country_name+'-'+state_name,
@@ -69,6 +70,7 @@ def get_hotspots(location, max_distance):
         fmt='csv')
 
     # find state hotspots within distance km
+    # TODO add distance
     hotspots = [[x['locName'], x['locID']] for x in state_hs if get_distance(origin, [x['lat'], x['lng']]) < max_distance]
 
     return hotspots
@@ -92,37 +94,60 @@ def get_distance(origin, destination):
 
     return d
 
-def bird_probability(birds, hotspot_id):
+def report_counts(birds_wanted, hotspot_id):
+    # *approximate* probability of observing a bird, estimated from the number of checklists
+    # in which it was reported. Turns out eBird API does not return all sightings and
+    # provides no access to total number of checklists! So we're upper bounding here.
 
     # get all recent checklists from a hotspot
-
-    sightings = ebird('data/obs/hotspot/recent',
+    sightings = ebird('product/obs/hotspot/recent',
                           back=30,
                           r=hotspot_id,
                           detail='full',
+                          includeProvisional='true',
                           fmt='json')
-    # loop through birds
-    # determine in how many checklists bird was observed
-    return range(1,10,1)
+
+    # if len(sightings) > 0:
+    #     print sightings[0]['locName']
+
+    num_checklists = np.array([x['numChecklists'] for x in sightings])
+
+    # Find "wanted" birds and store number of times reported
+    ind_wanted = 0
+    num_seen = [0 for x in range(len(birds_wanted))]
+    for bird in birds_wanted:
+        ind_sightings = 0
+        for sighting in sightings:
+            if bird in sighting['comName']:
+                # print '    ' + sighting['comName'] + ', seen %s' %num_checklists[ind_sightings] +' times'
+                num_seen[ind_wanted] = num_checklists[ind_sightings]
+            ind_sightings += 1
+        ind_wanted += 1
+
+    num_seen = np.array(num_seen)
+
+    return num_seen
 
 
-    #
-    # if __name__ == '__main__': # prevent from executing when importing (or run when called as a script)
-    #     print 42
-    #     print 'hi alex'
-    #     print bird_probability(sys.argv)
+##
+bird_list = get_new_birds('Philadelphia', 'San Francisco', 20)
+hotspots = get_hotspots('San Francisco', 20)
 
-# print get_new_birds('Philadelphia', 'San Francisco', 20)
+good_hotspots = []
+for x in hotspots:
+    num_seen = report_counts(bird_list, x[1])
 
-def show_probability(here, there, distance):
+    ind_max = num_seen.argmax()
+    most_common = [bird_list[ind_max], num_seen[ind_max]]
 
-    new_birds = get_new_birds(here, there, distance)
-    hotspots = get_hotspots(there, distance)
+    # only store hotspots with >20 sightings of most common bird
+    if most_common[1] > 10:
+        prob_seen = [y/float(most_common[1]) for y in num_seen]
+        keep_birds = [z for z in sorted(zip(bird_list, prob_seen), key=lambda x: x[1], reverse=True) if z[1] > 0.5]
 
-    prob = [bird_probability(new_birds, x) for x in hotspots]
+        good_hotspots.append({'locName': x[0], 'locID': x[1], 'birds': keep_birds})
 
-
-    # next:
-    # 1) get a probability of observing a particular bird at each hotspot in the region
-    # 2) sort birds by probability (of first hotspot)
-    # 3) display bird, hotspot, probability, 2nd hotspot, probability
+        print good_hotspots[-1]['locName']
+        print '  Most common bird: ' + most_common[0] + ', reported %s' %most_common[1] + ' times in the last 30 days'
+        for i in good_hotspots[-1]['birds']:
+            print '     ' + i[0] + ' prob = %.2f' % i[1]
