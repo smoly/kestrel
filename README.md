@@ -58,7 +58,7 @@ Out[36]:
  'expected_n': 9.0909090909090917,
  'locID': u'L743012',
  'locName': u'Golden Gate Park--Middle Lake', # hotspot name
- 'notable': {u'American Redstart'}}  # all notable birds found here
+ 'notable': {u'American Redstart'}}  #  notable birds found here and not at home
 ```
 - `prob_array`: an array of probabilities of observing each bird in each hotspot. It is sized `len(good_hotspots)` by `len(bird_list)`
 ```python
