@@ -1,4 +1,4 @@
-# Kestrel
+# kestrel
 
 Traveling birder? Kestrel helps naturalists traveling to new places find birds that they cannot find at home. It helps you identify target locations to increase the chances of seeing birds that are not found in your stomping grounds. It also highlights regionally important or otherwise notable birds to help the you pick the best hot spot and brush up on field mark details.
 
