@@ -8,6 +8,14 @@ from pylab import * # "core parts of numpy, scipy, and matplotlib" (http://wiki.
 from cStringIO import StringIO
 from PIL import Image
 import urllib
+import geopy
+from geopy.distance import VincentyDistance
+import mysql.connector
+from matplotlib_venn import venn2
+
+plot_on = 1
+
+# import getNewBirds as nb; reload(nb); from getNewBirds import *
 
 
 def ebird(service, **reqParams):
@@ -89,37 +97,158 @@ def google_map(good_hs, bad_hs):
     return image
 
 
-def get_new_birds(here, there, distance):
+# def get_new_birds(here, there, distance):
+#     # get list of birds that have been observed 'there' but not 'here'
+#     # 'here' and 'there' should be google-able location names
+#     # distance in km
+#     # usage: new_birds = get_new_birds(here, there, distance)
+#
+#     here_geo = google_geo(here)
+#     there_geo = google_geo(there)
+#
+#     print 'Finding birds within %.2f' % distance + ' km of ' + there_geo['formatted_address']
+#     print 'that are not found within %.2f' % distance + ' km of ' + here_geo['formatted_address']
+#
+#     # there_geo['results'][0]['geometry']['location']['lat']
+#
+#     here_sightings = ebird('data/obs/geo/recent',
+#                           lat=here_geo['lat'],
+#                           lng=here_geo['lng'],
+#                           dist=distance)
+#     there_sightings = ebird('data/obs/geo/recent',
+#                            lat=there_geo['lat'],
+#                            lng=there_geo['lng'],
+#                            dist=distance)
+#
+#     # Allow for missing common name, returns 'None', missing names bug fixed by eBird on 9/8
+#     here_birds = [x.get('comName') for x in here_sightings]
+#     there_birds = [x.get('comName') for x in there_sightings]
+#
+#     new_birds = list(set(there_birds) - set(here_birds))
+#
+#     # print 'New birds:'
+#     # pprint(new_birds)
+#
+#     return new_birds
+
+def get_new_birds(here, there, distance, month):
     # get list of birds that have been observed 'there' but not 'here'
     # 'here' and 'there' should be google-able location names
     # distance in km
-    # usage: new_birds = get_new_birds(here, there, distance)
+    # month in 2-digit month format
+    # usage: new_birds = get_new_birds(here, there, distance, month)
 
+    # Get location name, lat,lng
     here_geo = google_geo(here)
     there_geo = google_geo(there)
+
+    # Get bounding box within radius = distance
+    here_box = geo_bounds([here_geo['lat'], here_geo['lng']], distance)
+    there_box = geo_bounds([there_geo['lat'], there_geo['lng']], distance)
 
     print 'Finding birds within %.2f' % distance + ' km of ' + there_geo['formatted_address']
     print 'that are not found within %.2f' % distance + ' km of ' + here_geo['formatted_address']
 
-    # there_geo['results'][0]['geometry']['location']['lat']
+    # Query MySQL for species list in each region
+    cnx = mysql.connector.connect(user='root', password='',
+                                  database='kestrel1m')
 
-    here_sightings = ebird('data/obs/geo/recent',
-                          lat=here_geo['lat'],
-                          lng=here_geo['lng'],
-                          dist=distance)
-    there_sightings = ebird('data/obs/geo/recent',
-                           lat=there_geo['lat'],
-                           lng=there_geo['lng'],
-                           dist=distance)
+    #TODO: remove 2003 line!!
+    now = datetime.datetime.now()
 
-    # Allow for missing common name, returns 'None', missing names bug fixed by eBird on 9/8
-    here_birds = [x.get('comName') for x in here_sightings]
-    there_birds = [x.get('comName') for x in there_sightings]
+    # there birds:
+    cursor = cnx.cursor()
+    cursor.execute('''
+    select common_name
+    from checklists
+    join locations on locations.pk = checklists.location_pk
+    join sightings on sightings.checklist_pk = checklists.pk
+    join species on species.pk = sightings.species_pk
+    where latitude between %s and %s and longitude between %s and %s
+    and (observation_date between '%s-%s-01' and '%s-%s-31'
+    or observation_date between '2003-11-01' and '2003-11-31'
+    or observation_date between '%s-%s-01' and '%s-%s-31'
+    or observation_date between '%s-%s-01' and '%s-%s-31')
+    group by common_name
+    ''', (there_box[0], there_box[1], there_box[2], there_box[3],
+          now.year-2, month,
+          now.year-2, month,
+          now.year-1, month,
+          now.year-1, month,
+          now.year, month,
+          now.year, month))
+
+    there_birds = [common_name for common_name in cursor]
+
+    # here birds:
+    # TODO: do we want to restrict bird list here to this month??
+    # TODO: remove 2003!
+    cursor.execute('''
+    select common_name
+    from checklists
+    join locations on locations.pk = checklists.location_pk
+    join sightings on sightings.checklist_pk = checklists.pk
+    join species on species.pk = sightings.species_pk
+    where latitude between %s and %s and longitude between %s and %s
+    and (observation_date between '%s-%s-01' and '%s-%s-31'
+    or observation_date between '2003-11-01' and '2003-11-31'
+    or observation_date between '%s-%s-01' and '%s-%s-31'
+    or observation_date between '%s-%s-01' and '%s-%s-31')
+    group by common_name
+    ''', (here_box[0], here_box[1], here_box[2], here_box[3],
+          now.year-2, month,
+          now.year-2, month,
+          now.year-1, month,
+          now.year-1, month,
+          now.year, month,
+          now.year, month))
+
+    here_birds = [common_name for common_name in cursor]
+
+    cursor.close()
+    cnx.close()
 
     new_birds = list(set(there_birds) - set(here_birds))
 
     # print 'New birds:'
-    # pprint(new_birds)
+    pprint(new_birds)
+
+    if plot_on:
+        plt.figure(figsize=(9,6))
+        v = venn2([set(here_birds), set(there_birds)], (here_geo['formatted_address'], there_geo['formatted_address']))
+        v.get_patch_by_id('100').set_alpha(1.0)
+        v.get_patch_by_id('100').set_color('gray')
+        plt.title('Number of Bird Species')
+
+
+        # here birds
+        count = 1
+        plt.text(-1, 0.7, 'Here Birds', size=10, weight='bold')
+        y_loc = sort(np.arange(-0.7, 0.61, 1.3/len(here_birds)))
+        for bird in here_birds:
+            plt.text(-1, y_loc[count], bird[0], size=8)
+            count += 1
+        # TODO: add overlapping birds!
+
+        # special birds
+        count = 0
+        plt.text(0.8, 0.7, 'New Birds', size=10, weight='bold', color = 'green')
+
+        # FIXME: make continuous instead of stupid
+        if len(new_birds) < 7:
+            y_loc = np.arange(0.3, 0.71, 0.4/len(new_birds))
+        elif len(new_birds) < 15:
+            y_loc = np.arange(0, 0.71, 0.7/len(new_birds))
+        elif len(new_birds) < 30:
+            y_loc = sort(np.arange(-0.3, 0.7, 1/len(new_birds)))
+        else:
+            y_loc = sort(np.arange(-0.7, 0.6, 1.3/len(new_birds)))
+
+        for bird in new_birds:
+            plt.text(0.8, y_loc[count], bird[0], size=10)
+            count += 1
+        plt.show()
+
 
     return new_birds
 
@@ -169,6 +298,23 @@ def get_distance(origin, destination):
     d = radius * c
 
     return d
+
+def geo_bounds(origin, distance):
+    # get bounding box of 'distance' km around a geo point in (lat, lng)
+    # origin should be [lat,lng] list
+    # distance is radius in km
+    # usage: box = geo_bounds(origin, distance)
+    # box = (lat S (min), lat N (max), lng W (min), lng E (max))
+
+    north = VincentyDistance(kilometers=distance).destination(geopy.Point(origin), 0)
+    east = VincentyDistance(kilometers=distance).destination(geopy.Point(origin), 90)
+    south = VincentyDistance(kilometers=distance).destination(geopy.Point(origin), 180)
+    west = VincentyDistance(kilometers=distance).destination(geopy.Point(origin), 270)
+
+    # get bounding box: (min lat, max lat, min lng, max lng)
+    box = (south.latitude, north.latitude, west.longitude, east.longitude)
+
+    return box
 
 def get_counts(birds_wanted, hotspot_id):
     # *approximate* bird frequency: the number of checklists in which it was reported. Turns out eBird API does not
