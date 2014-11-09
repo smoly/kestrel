@@ -1,15 +1,15 @@
-import sys
+# import sys
 from pprint import pprint
 import requests
-import math
-import numpy as np
-# import matplotlib.pyplot as plt
+# import math
+# import numpy as np
+# # import matplotlib.pyplot as plt
 from pylab import * # "core parts of numpy, scipy, and matplotlib" (http://wiki.scipy.org/PyLab)
 from cStringIO import StringIO
 from PIL import Image
 import urllib
 import geopy
-from geopy.distance import VincentyDistance
+from geopy.distance import vincenty
 import mysql.connector
 from matplotlib_venn import venn2
 
@@ -36,9 +36,13 @@ def google_geo(location):
     info = requests.get(
             'https://maps.googleapis.com/maps/api/geocode/json?address='+location+'&sensor=false').json()
 
-    geo = {'formatted_address': info['results'][0]['formatted_address'],
-        'lat': info['results'][0]['geometry']['location']['lat'],
-        'lng': info['results'][0]['geometry']['location']['lng']}
+    geo = {}
+    if info['status'] != 'ZERO_RESULTS':
+        geo = {'formatted_address': info['results'][0]['formatted_address'],
+            'lat': info['results'][0]['geometry']['location']['lat'],
+            'lng': info['results'][0]['geometry']['location']['lng']}
+    else:
+        print 'Could not find ' + location
 
     return geo
 
@@ -132,15 +136,31 @@ def google_map(good_hs, bad_hs):
 #     return new_birds
 
 def get_new_birds(here, there, distance, month):
-    # get list of birds that have been observed 'there' but not 'here'
-    # 'here' and 'there' should be google-able location names
-    # distance in km
-    # month in 2-digit month format
-    # usage: new_birds = get_new_birds(here, there, distance, month)
+    ''' get list of birds that have been observed 'there' but not 'here'
+
+    new_birds = get_new_birds(here, there, distance, month)
+
+    :param here: google-able location name of home
+    :param there: google-able location name of destination
+    :param distance: search radius in km
+    :param month: 2-digit month number
+    :return: new_birds a list of new birds that can be found at destination
+            in the requested month. None of these birds has been reported in
+            here location in the last 3 years.
+    '''
+
 
     # Get location name, lat,lng
     here_geo = google_geo(here)
     there_geo = google_geo(there)
+
+    if not here_geo:
+        print ' Please try a different "here" location'
+        return
+
+    if not there_geo:
+        print ' Please try a different "there" location'
+        return
 
     # Get bounding box within radius = distance
     here_box = geo_bounds([here_geo['lat'], here_geo['lng']], distance)
@@ -151,34 +171,11 @@ def get_new_birds(here, there, distance, month):
 
     # Query MySQL for species list in each region
     cnx = mysql.connector.connect(user='root', password='',
-                                  database='kestrel1m')
-
+                                  database='kestrel2y')
 
     now = datetime.datetime.now()
 
-    # there birds:
-    # cursor = cnx.cursor()
-    # cursor.execute('''
-    # select common_name
-    # from checklists
-    # # join locations on locations.pk = checklists.location_pk
-    # join sightings on sightings.checklist_pk = checklists.pk
-    # join species on species.pk = sightings.species_pk
-    # where latitude between %s and %s and longitude between %s and %s
-    # and (observation_date between '%s-%s-01' and '%s-%s-31'
-    # or observation_date between '2003-11-01' and '2003-11-31'
-    # or observation_date between '%s-%s-01' and '%s-%s-31'
-    # or observation_date between '%s-%s-01' and '%s-%s-31')
-    # group by common_name
-    # ''', (there_box[0], there_box[1], there_box[2], there_box[3],
-    #       now.year-2, month,
-    #       now.year-2, month,
-    #       now.year-1, month,
-    #       now.year-1, month,
-    #       now.year, month,
-    #       now.year, month))
-
-    #TODO: remove 2003 line!!
+    # Get "there" birds
     cursor = cnx.cursor()
     cursor.execute('''
     select common_name
@@ -186,63 +183,25 @@ def get_new_birds(here, there, distance, month):
     join locations on locations.pk = sightings.locations_pk
     join species on species.pk = sightings.species_pk
     where latitude between %s and %s and longitude between %s and %s
-    and (observation_date between '%s-%s-01' and '%s-%s-31'
-    or observation_date between '2003-11-01' and '2003-11-31'
-    or observation_date between '%s-%s-01' and '%s-%s-31'
-    or observation_date between '%s-%s-01' and '%s-%s-31')
+    and observation_date > '%s-01-01' and month(observation_date) = %s
     group by common_name
     ''', (there_box[0], there_box[1], there_box[2], there_box[3],
-          now.year-2, month,
-          now.year-2, month,
-          now.year-1, month,
-          now.year-1, month,
-          now.year, month,
-          now.year, month))
-
+          now.year-2,
+          month))
 
     there_birds = [common_name for common_name in cursor]
 
-    # here birds:
-    # TODO: do we want to restrict bird list here to this month??
-    # TODO: remove 2003!
-    # cursor.execute('''
-    # select common_name
-    # from checklists
-    # join locations on locations.pk = checklists.location_pk
-    # join sightings on sightings.checklist_pk = checklists.pk
-    # join species on species.pk = sightings.species_pk
-    # where latitude between %s and %s and longitude between %s and %s
-    # and (observation_date between '%s-%s-01' and '%s-%s-31'
-    # or observation_date between '2003-11-01' and '2003-11-31'
-    # or observation_date between '%s-%s-01' and '%s-%s-31'
-    # or observation_date between '%s-%s-01' and '%s-%s-31')
-    # group by common_name
-    # ''', (here_box[0], here_box[1], here_box[2], here_box[3],
-    #       now.year-2, month,
-    #       now.year-2, month,
-    #       now.year-1, month,
-    #       now.year-1, month,
-    #       now.year, month,
-    #       now.year, month))
-
+    # Get "here" birds:
     cursor.execute('''
     select common_name
     from sightings
     join locations on locations.pk = sightings.locations_pk
     join species on species.pk = sightings.species_pk
     where latitude between %s and %s and longitude between %s and %s
-    and (observation_date between '%s-%s-01' and '%s-%s-31'
-    or observation_date between '2003-11-01' and '2003-11-31'
-    or observation_date between '%s-%s-01' and '%s-%s-31'
-    or observation_date between '%s-%s-01' and '%s-%s-31')
+    and observation_date > '%s-01-01'
     group by common_name
     ''', (here_box[0], here_box[1], here_box[2], here_box[3],
-          now.year-2, month,
-          now.year-2, month,
-          now.year-1, month,
-          now.year-1, month,
-          now.year, month,
-          now.year, month))
+          now.year-2))
 
     here_birds = [common_name for common_name in cursor]
 
@@ -252,80 +211,72 @@ def get_new_birds(here, there, distance, month):
     new_birds = list(set(there_birds) - set(here_birds))
 
     # print 'New birds:'
-    pprint(new_birds)
+    # pprint(new_birds)
 
     if plot_on:
-        plt.figure(figsize=(10,8))
-        v = venn2([set(here_birds), set(there_birds)], (here_geo['formatted_address'], there_geo['formatted_address']))
+        fig, h_plot = plt.subplots(3, 3, figsize=(10,7))
+        v = venn2([set(here_birds), set(there_birds)],
+                  (here_geo['formatted_address'], there_geo['formatted_address']),
+                  ax=h_plot[0][1])
         v.get_patch_by_id('100').set_alpha(1.0)
         v.get_patch_by_id('100').set_color('gray')
-        plt.title('Number of Bird Species')
-        top = 0.70
+        h_plot[0][1].set_title('Number of Bird Species')
 
+        # Hide all other axes - ick
+        h_plot[0][0].axis('off')
+        h_plot[0][2].axis('off')
+        h_plot[1][0].axis('off')
+        h_plot[1][1].axis('off')
+        h_plot[1][2].axis('off')
+        h_plot[2][0].axis('off')
+        h_plot[2][1].axis('off')
+        h_plot[2][2].axis('off')
 
-        # here birds
-        if len(here_birds) < 40:
-            step_size = 0.05
-            font_size = 10
-        elif len(here_birds) < 80:
-            step_size = 0.025
-            font_size = 8
-        else:
-            step_size = 0.01
-            font_size = 6
-
-        n = len(here_birds)
-        bottom = top - (n * step_size)
-        y_loc = sort(np.arange(bottom, top+0.01, step_size))
-
-        count = 0
-        plt.text(-1, 0.7, 'Here Birds', size=font_size, weight='bold')
-        # y_loc = sort(np.arange(-0.7, 0.61, 1.3/len(here_birds)))
-        for bird in here_birds:
-            plt.text(-1, y_loc[count], bird[0], size=font_size)
-            count += 1
-        # TODO: add overlapping birds!
-
-        # new birds
-        plt.text(0.8, top, 'New Birds', size=font_size, weight='bold', color = 'green')
-
-        if len(new_birds) < 40:
-            step_size = 0.05
-            font_size = 10
-        elif len(new_birds) < 80:
-            step_size = 0.025
-            font_size = 8
-        else:
-            step_size = 0.01
-            font_size = 6
-
-        n = len(new_birds)
-        bottom = top - (n * step_size)
-        y_loc = sort(np.arange(bottom, top+0.01, step_size))
-        count = 0
-        for bird in new_birds:
-            plt.text(0.7, y_loc[count], bird[0], size=font_size)
-            count += 1
-        plt.show()
-
+        figtext(0.1, 0.6, 'New Birds in ' + there_geo['formatted_address'],
+                size=14, color='green')
+        text_to_fig(sorted(new_birds),
+                    top_loc=0.56,
+                    left_loc=0.1,
+                    text_col='green',
+                    step_size=0.9/50,
+                    lines_per_column = 30)
+        show()
 
     return new_birds
 
-def get_hotspots(location, distance):
-    # returns all hotspot names and IDs within 'distance' of 'location'
-    # location can be googlable name
-    # distance in km
-    # usage: hotspots = get_hotspots(location, distance)
 
-    print 'Finding hotspots in %s' %location
+def text_to_fig(lines, top_loc, left_loc, text_col, step_size, lines_per_column):
+
+    font_size = 10
+
+    for i_line, this_line in enumerate(lines):
+        if mod(i_line, lines_per_column) == 0 and i_line != 0:
+            left_loc += 0.2
+        figtext(left_loc, top_loc - step_size*mod(i_line,lines_per_column),
+                this_line[0][:25],
+                size=font_size, color=text_col)
+
+def get_hotspots(location, distance):
+    ''' returns all hotspot names and IDs within 'distance' of 'location'
+    usage: hotspots = get_hotspots(location, distance)
+
+    to get distances:
+    distances = [vincenty(origin, x[2:]).meters/1000 for x in hotspots]
+
+    :param location: can be googlable name
+    :param distance: in km
+    :return: hotspots: [(name, id, lat, lng)]
+    '''
 
     geo = requests.get('https://maps.googleapis.com/maps/api/geocode/json?address='+location+'&sensor=false').json()
     origin = [geo['results'][0]['geometry']['location']['lat'], geo['results'][0]['geometry']['location']['lng']]
     geo_box = geo_bounds(origin, distance)
 
+    print 'Finding hotspots in %s' %geo['results'][0]['formatted_address']
+
     # Query MySQL for hotspots within distance of location
     cnx = mysql.connector.connect(user='root', password='',
-                                  database='kestrel1m')
+                                  database='kestrel2y')
     cursor = cnx.cursor()
     cursor.execute('''
     select locality, id, latitude, longitude
@@ -341,6 +292,9 @@ def get_hotspots(location, distance):
     cursor.close()
     cnx.close()
 
+    # distances = [vincenty(origin, x[2:]).meters/1000 for x in hotspots]
+
+    # Via eBird API:
     # Get all hotspots in the state (finest resolution provided by eBird API)
     # geo = requests.get(
     #     'https://maps.googleapis.com/maps/api/geocode/json?address='+location+'&sensor=false').json()
@@ -360,26 +314,6 @@ def get_hotspots(location, distance):
 
     return hotspots
 
-
-def get_distance(origin, destination):
-    # compute great-circle distance using haversine formula
-    # 'origin' and 'destination' should be [lat, lng] lists
-    # Author: Wayne Dyck
-    # usage: d = get_distance(origin [lat,lng], destination [lat, lng])
-
-    lat1, lon1 = origin
-    lat2, lon2 = destination
-    radius = 6371 # km (or 3963 mi, but eBird refs in km so beware)
-
-    dlat = math.radians(lat2-lat1)
-    dlon = math.radians(lon2-lon1)
-    a = math.sin(dlat/2) * math.sin(dlat/2) + math.cos(math.radians(lat1)) \
-        * math.cos(math.radians(lat2)) * math.sin(dlon/2) * math.sin(dlon/2)
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-    d = radius * c
-
-    return d
-
 def geo_bounds(origin, distance):
     # get bounding box of 'distance' km around a geo point in (lat, lng)
     # origin should be [lat,lng] list
@@ -387,15 +321,15 @@ def geo_bounds(origin, distance):
     # usage: box = geo_bounds(origin, distance)
     # box = (lat S (min), lat N (max), lng W (min), lng E (max))
 
-    north = VincentyDistance(kilometers=distance).destination(geopy.Point(origin), 0)
-    east = VincentyDistance(kilometers=distance).destination(geopy.Point(origin), 90)
-    south = VincentyDistance(kilometers=distance).destination(geopy.Point(origin), 180)
-    west = VincentyDistance(kilometers=distance).destination(geopy.Point(origin), 270)
+    north = vincenty(kilometers=distance).destination(geopy.Point(origin), 0)
+    east = vincenty(kilometers=distance).destination(geopy.Point(origin), 90)
+    south = vincenty(kilometers=distance).destination(geopy.Point(origin), 180)
+    west = vincenty(kilometers=distance).destination(geopy.Point(origin), 270)
 
     # get bounding box: (min lat, max lat, min lng, max lng)
-    box = (south.latitude, north.latitude, west.longitude, east.longitude)
+    geo_box = (south.latitude, north.latitude, west.longitude, east.longitude)
 
-    return box
+    return geo_box
 
 def get_counts(birds_wanted, hotspot_id):
     # *approximate* bird frequency: the number of checklists in which it was reported. Turns out eBird API does not
@@ -459,10 +393,10 @@ def plot_hotspots(good_hotspots, prob_array, titles):
     # set up axes and labels
     fig, axes = plt.subplots(1, 1, figsize=(20, 8),
          subplot_kw={
-             'xticks': range(0,len(titles['birds'])),
-             'xticklabels': titles['birds'],
-             'yticks': range(0,len(good_hotspots)),
-             'yticklabels': titles['hotspots'],
+                'xticks': range(0,len(titles['birds'])),
+                'xticklabels': titles['birds'],
+                'yticks': range(0,len(good_hotspots)),
+                'yticklabels': titles['hotspots'],
          }
     )
     plt.subplots_adjust(left=0.12, right=0.99, top=0.99, bottom=0.1)
@@ -487,42 +421,48 @@ def plot_hotspots(good_hotspots, prob_array, titles):
 
 
 def find_good_hotspots(here, there, distance, month):
-    # return hotspots with frequent sightings and the probability of observing "wanted" birds
-    # also return sightings data array for plotting
-    # 'here' and 'there' should be google-able location names, e.g. "Philadelphia"
-    # distance in km
-    # usage: [good_hotspots, bad_hotspots, prob_array, bird_list] = find_good_hotspots(here, there, distance)
+    ''' return good hotspots and the probability of observing "wanted" birds.
+    "good" hotspots are defined as those with > 10 sightings of the most common bird
 
-    bird_list = get_new_birds(here, there, distance, month)
-    hotspot_ids = get_hotspots(there, distance)
+    usage: [good_hotspots, bad_hotspots, prob_array, bird_list] = find_good_hotspots(here, there, distance)
+
+    :param here: google-able location name, e.g. "Philadelphia"
+    :param there: google-able location name, e.g. "Philadelphia"
+    :param distance: in km
+    :param month: in 2-digit int
+    :return:
+    '''
+
+    new_birds = get_new_birds(here, there, distance, month)
+    hotspots = get_hotspots(there, distance)
 
     good_hotspots = []
     bad_hotspots = []
 
     prob_array = []
-    for x in hotspot_ids:
-        num_seen = get_counts(bird_list, x[1])
+    for hs in hotspots:
+        num_seen = get_counts(new_birds, hs[1])
 
         ind_max = num_seen.argmax()
-        most_common = [bird_list[ind_max], num_seen[ind_max]]
+        most_common = [new_birds[ind_max], num_seen[ind_max]]
 
         # only store hotspots with >10 sightings of the most common bird
         if most_common[1] > 10:
             prob_seen = [y/float(most_common[1]) for y in num_seen]
             prob_array.append(prob_seen)
-            keep_birds = [z for z in sorted(zip(bird_list, prob_seen), key=lambda x: x[1], reverse=True) if z[1] > 0]
+            keep_birds = [z for z in sorted(zip(new_birds, prob_seen), key=lambda hs: hs[1], reverse=True) if z[1] > 0]
 
-            notable_birds = get_notable(x[1])
+            notable_birds = get_notable(hs[1])
             if len(notable_birds):
                 print '     Found notable species:'
                 for i in notable_birds:
                     print '          ' + i
 
             good_hotspots.append({
-                'locName': x[0],
-                'locID': x[1],
-                'lat': x[2],
-                'lng': x[3],
+                'locName': hs[0],
+                'locID': hs[1],
+                'lat': hs[2],
+                'lng': hs[3],
                 'birds': keep_birds,
                 'notable': notable_birds,
                 'expected_n': np.sum(prob_seen)})
@@ -533,10 +473,10 @@ def find_good_hotspots(here, there, distance, month):
                 print '     ' + i[0] + ' prob = %.2f' %i[1]
         else:
             bad_hotspots.append({
-                'locName': x[0],
-                'locID': x[1],
-                'lat': x[2],
-                'lng': x[3]})
+                'locName': hs[0],
+                'locID': hs[1],
+                'lat': hs[2],
+                'lng': hs[3]})
             print '    X does not have enough sightings of most common bird (%d)' %most_common[1]
 
     # make probability array and plot!
@@ -550,8 +490,8 @@ def find_good_hotspots(here, there, distance, month):
 
     # good_hotspots = sorted(good_hotspots, key=good_hotspots.expected_n)
 
-    titles = {'birds': bird_list,
-        'hotspots': [x['locName'] for x in good_hotspots],
+    titles = {'birds': new_birds,
+        'hotspots': [hs['locName'] for hs in good_hotspots],
         'title': 'Probability of observing birds not seen in %s' %here + ' in %s hotspots' %there
     }
 
@@ -559,4 +499,4 @@ def find_good_hotspots(here, there, distance, month):
     # google_map(there, good_hotspots, bad_hotspots)
 
     print 'Done! Found %d good hotspots' %len(good_hotspots)
-    return good_hotspots, bad_hotspots, prob_array, bird_list
+    return good_hotspots, bad_hotspots, prob_array, new_birds
