@@ -53,8 +53,8 @@ reviewed bit(1),
 reason varchar(255)
 
 );
-describe raw;
-
+# describe raw;
+select('Created raw');
 # load data local
 infile '/Users/Alexandra/PycharmProjects/trip_bird/data/raw-2y.tsv'
 into table raw
@@ -64,6 +64,11 @@ show warnings;
 
 select count(*) as n_raw from raw;
 
+
+create index idx_id_sei on raw (locality_id, sampling_event_identifier); # 51 minutes
+create index idx_sei on raw (sampling_event_identifier);
+
+select('Created indices on raw');
 # ###################
 # # Create observers table
 
@@ -185,14 +190,23 @@ group by
   locality_id
 ;
 
+# # TODO make case SENSITIVE:
+alter table locations change locality locality varchar(255) not null collate utf8_bin;
+
+# change it back!
+# alter table locations change locality locality varchar(255) not null collate utf8_general_ci;
+
+
 select count(*) as n_locations from locations;
 
 # Test: the below should have the same number of rows as locations:
 # select count(*) from (select locality_id from raw group by locality_id) A;
 
+# drop index idx_locality on locations;
+
 create index idx_id on locations (id);
 create index idx_locality_type on locations (locality_type);
-create index idx_locality on locations (locality);
+create index idx_locality on locations (locality); # 4 s
 create index idx_state on locations (state);
 create index idx_country on locations (country);
 create index idx_country_code on locations (country_code);
@@ -204,6 +218,132 @@ select('Created location indices');
 
 # # ###################
 # # Create checklists table
+
+# NOt included:
+# protocol_type
+# number_observers
+# reason - "in this dataset always "introduced-exotic" for not accepted
+
+
+drop table if exists checklists2;
+create table checklists2 (
+  pk int not null auto_increment,
+  observation_date date default 0 not null,
+  time_observation_started timestamp default 0,
+  locality_id varchar(100),
+  locations_pk int,
+  sampling_event_identifier varchar(255),
+  n_sightings_per_checklist int,
+  duration_minutes int,
+  all_species_reported bit(1),
+  group_identifier varchar(255),
+  approved bit(1),
+  reviewed bit(1),
+  primary key (pk)
+);
+
+insert into checklists2 (
+  observation_date,
+  time_observation_started,
+  locality_id,
+  locations_pk,
+  sampling_event_identifier,
+  n_sightings_per_checklist,
+  duration_minutes,
+  all_species_reported,
+  group_identifier,
+  approved,
+  reviewed
+   )
+select
+    observation_date,
+    time_observation_started,
+    locality_id,
+    null, # locality_pk, will add later
+    sampling_event_identifier,
+    count(*), # number of species per checklist
+    duration_minutes,
+    all_species_reported,
+    group_identifier,
+    approved,
+    reviewed
+from raw
+group by sampling_event_identifier
+; # 4 hours, 4.8 million rows
+
+create index idx_locality_id on checklists2 (locality_id);
+
+
+# TODO NEXT: join checklists 2 to locations to get locations_pk; rename table
+# update statement
+update checklists2, locations
+set checklists2.locations_pk = locations.pk
+where locations.id = checklists2.locality_id
+; # 10 minutes
+rename table checklists2 to checklists;
+
+create index idx_sei on checklists (sampling_event_identifier);
+create index idx_locations_pk on checklists (locations_pk);
+
+
+# locations.id,
+# join locations on locations.id = raw.locality_id
+# where locations.locality_type = 'H'
+
+
+
+# drop table if exists checklists;
+# create table checklists (
+#   pk int not null auto_increment,
+#   observation_date date default 0 not null,
+#   time_observation_started timestamp default 0,
+#   raw_locality_id varchar(100),
+#   locality_pk int,
+#   sampling_event_identifier varchar(255),
+#   n_sightings_per_checklist int,
+#   duration_minutes int,
+#   all_species_reported bit(1),
+#   group_identifier varchar(255),
+#   approved bit(1),
+#   reviewed bit(1),
+#   reason varchar(255),
+#   primary key (pk)
+# );
+#
+# insert into checklists (
+#   observation_date,
+#   time_observation_started,
+#   raw_locality_id,
+#   locality_pk,
+#   sampling_event_identifier,
+#   n_sightings_per_checklist,
+#   duration_minutes,
+#   all_species_reported,
+#   group_identifier,
+#   approved,
+#   reviewed
+#    )
+# select
+#     observation_date,
+#     time_observation_started,
+#     raw.locality_id,
+#     locations.pk,
+#     sampling_event_identifier,
+#     count(*),
+#     duration_minutes,
+#     all_species_reported,
+#     group_identifier,
+#     approved,
+#     reviewed
+# from raw
+# join locations on locations.id = raw.locality_id
+# group by locations.id, sampling_event_identifier
+# ;
+#
+#
+# where locations.locality_type = 'H'
+
+
 # 
 # drop table if exists checklists;
 # create table checklists (
@@ -279,6 +419,8 @@ select('Created location indices');
 # ###################
 # # Create sightings table
 
+# TODO: add observation_count??
+
 drop table if exists sightings;
 create table sightings (
   pk int not null auto_increment,
@@ -302,8 +444,6 @@ create table sightings (
   reason varchar(255),
   primary key (pk)
 );
-
-#  checklist_pk int,
 
 insert into sightings (
   global_unique_identifier,
@@ -350,14 +490,13 @@ join observers on observers.id = raw.observer_id
 join locations on locations.id = raw.locality_id
 ;
 
-# join checklists on checklists.sampling_event_identifier = raw.sampling_event_identifier
-
 select count(*) as n_sightings from sightings;
 
 create index idx_species_pk on sightings(species_pk);
 create index idx_locations_pk on sightings(locations_pk); # 37 minutes
 create index idx_observation_date on sightings(observation_date); # 14 minutes
 create index idx_observers_pk on sightings(observers_pk); # TODO: build!!
+create index idx_sei on sightings(sampling_event_identifier); # 30 minutes
 
 
 # Nov 8: total time: ~181 m

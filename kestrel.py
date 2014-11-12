@@ -10,8 +10,8 @@ from matplotlib_venn import venn2
 
 # import kestrel as ks; reload(ks); from kestrel import *
 
-# loc = 'Jackson, WY'
-# geo_bounds([google_geo(loc)['lat'], google_geo(loc)['lng']], 20)
+# there = 'Jackson, WY'
+# geo_bounds([google_geo(there)['lat'], google_geo(there)['lng']], 20)
 
 plot_on = 1
 
@@ -66,30 +66,64 @@ def get_hotspots(there, distance, month):
     # Query MySQL for number of checklists per hotspot
     cnx = mysql.connector.connect(user='root', password='', database='kestrel2y')
 
-    print 'Counting checklists'
+    print 'Counting checklists to find good hotspots'
     # Count number of checklists per hotspot
     cursor = cnx.cursor()
-    cursor.execute('''
-    create view checklists as
-    select locations.id, locality, latitude, longitude, sampling_event_identifier, count(*)
-    from sightings
-    join locations on locations.pk = sightings.locations_pk
-    where latitude between %s and %s and longitude between %s and %s
-    and observation_date > '%s-01-01' and month(observation_date) = %s
-    and locality_type = 'H'
-    group by locations.id, sampling_event_identifier
-    ''', (there_box[0], there_box[1], there_box[2], there_box[3],
-          now.year-2,
-          month))
 
     cursor.execute('''
-    select id as locality_id, latitude, longitude, locality, count(*)
-    from checklists
-    group by locality_id
-    order by locality
-    ''')
+        select
+        id as locality_id,
+        latitude,
+        longitude,
+        locality,
+        count(*) as n_checklists
+        from checklists
+        join locations on checklists.locations_pk = locations.pk
+        where latitude between %s and %s and longitude between %s and %s
+        and observation_date > '%s-01-01' and month(observation_date) = %s
+        and locality_type = 'H'
+        group by locality_id
+        order by locality
+        ''', (there_box[0], there_box[1], there_box[2], there_box[3],
+              now.year-2,
+              month))
 
-    print 'Finished counting checklists'
+# select
+# id as locality_id,
+# latitude,
+# longitude,
+# locality,
+# count(*) as n_checklists
+# from checklists
+# join locations on checklists.locations_pk = locations.pk
+# where latitude between 30.00 and 30.37 and longitude between -98.29 and -97.878
+# and observation_date > '2012-01-01' and month(observation_date) = 11
+# and locality_type = 'H'
+# group by locality_id
+# order by locality
+# ;
+
+
+    # cursor.execute('''
+    # create view checklists_temp as
+    # select locations.id, locality, latitude, longitude, sampling_event_identifier, count(*)
+    # from sightings
+    # join locations on locations.pk = sightings.locations_pk
+    # where latitude between %s and %s and longitude between %s and %s
+    # and observation_date > '%s-01-01' and month(observation_date) = %s
+    # and locality_type = 'H'
+    # group by locations.id, sampling_event_identifier
+    # ''', (there_box[0], there_box[1], there_box[2], there_box[3],
+    #       now.year-2,
+    #       month))
+    #
+    # cursor.execute('''
+    # select id as locality_id, latitude, longitude, locality, count(*)
+    # from checklists_temp
+    # group by locality_id
+    # order by locality
+    # ''')
+
     # sort hotspots into "good" and "bad" based on total number of checklists (20)
     good_hotspots = []
     bad_hotspots = []
@@ -111,7 +145,7 @@ def get_hotspots(there, distance, month):
                 'n_checklists': hs[4]
             })
 
-    cursor.execute('''drop view checklists''')
+    # cursor.execute('''drop view checklists_temp''')
     cursor.close()
 
     cnx.close()
@@ -154,6 +188,14 @@ def get_birds(here, there, distance, month, good_hotspots):
     cnx = mysql.connector.connect(user='root', password='', database='kestrel2y')
 
     # Get  "here" sightings (all year):
+    # OLD:
+    #     select sampling_event_identifier
+    # from checklists
+    # join locations on locations.pk = checklists.locations_pk
+    # where latitude between 30.00 and 30.37 and longitude between -98.29 and -97.878
+    # and observation_date > '12-01-01'
+    # # ;
+
     cursor = cnx.cursor()
     cursor.execute('''
     select common_name
@@ -167,6 +209,39 @@ def get_birds(here, there, distance, month, good_hotspots):
 
     here_birds = [common_name[0] for common_name in cursor]
     cursor.close()
+
+    # Try first finding checklists: request is too long!
+    # Get list of checklists "here"
+    # cursor = cnx.cursor()
+    # cursor.execute('''
+    # select sampling_event_identifier
+    # from checklists
+    # join locations on locations.pk = checklists.locations_pk
+    # where latitude between %s and %s and longitude between %s and %s
+    # and observation_date > '%s-01-01'
+    # ''',
+    #     (here_box[0], here_box[1], here_box[2], here_box[3],now.year-2))
+    #
+    # checklist_id = [x[0] for x in cursor]
+    # cursor.close()
+    #
+    # print 'Got list of checklists for here birds'
+    #
+    # # make long string of sampling_event_identifier = X for query
+    # id_str = "where (sampling_event_identifier = '%s'" % checklist_id[0]
+    # for x in checklist_id[1:]:
+    #     id_str += " or sampling_event_identifier = '%s'" % x
+    # id_str += ') '
+    #
+    # query = '''
+    #     select common_name from sightings
+    #     join species on species.pk = sightings.species_pk '''  \
+    #         + id_str
+    # cursor = cnx.cursor()
+    # cursor.execute(query)
+
+    # here_birds = [common_name[0] for common_name in cursor]
+    # cursor.close()
 
     print 'Queried "here" birds'
 
@@ -194,7 +269,6 @@ def get_birds(here, there, distance, month, good_hotspots):
           now.year-2,
           month)
     )
-
 
     print 'Queried "there" birds'
 
@@ -262,7 +336,7 @@ def get_probability(new_birds, sightings, good_hotspots):
     :return: prob_seen, good_hotspots
     '''
 
-    print 'getting probability'
+    print 'Computing probability'
     # sort out sighting counts into array of size len(good_hotspots) x len(new_birds)
     # yuck
     prob_seen = zeros((len(good_hotspots), len(new_birds)))
@@ -281,12 +355,12 @@ def get_probability(new_birds, sightings, good_hotspots):
                         #        hs['n_checklists'],
                         #        st['n_sightings'] / double(hs['n_checklists']))
 
-    print 'done computing probability'
 
     # Add expected number of birds to good_hotspot records
     for i_hs, hs in enumerate(good_hotspots):
         good_hotspots[i_hs]['expected_n'] = sum(prob_seen[i_hs])
 
+    print 'Plotting'
     if plot_on:
         titles = {'birds': new_birds,
                   'hotspots': [hs['locality'] for hs in good_hotspots],
@@ -385,41 +459,64 @@ def plot_hotspots(good_hotspots, prob_seen, titles):
 def google_map(good_hotspots):
     # show a Google map of hotspots ranked by goodness!
 
-    marker_colors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black']
-    max_hotspots = 20
-
-    # sort hotspots by number of birds!
+    # sort hotspots by expected number of birds!
     hs_sort = sorted(good_hotspots, key=lambda x: x['expected_n'], reverse=True)
-    
-    if len(good_hotspots) >= 5:
-        ind_cutoff = int(len(good_hotspots)*0.2)
-        cutoff = 'Top 20%'
-    else:
-        ind_cutoff = len(good_hotspots)
-        cutoff = 'All good'
-        
-    print '\n%s of hotspots:' % cutoff
-    for idx, hs in enumerate(hs_sort):
-        if idx == ind_cutoff:
-            print '\nOthers'
-        print '%i: %s , expected number of new birds = %.2f' % (idx+1, hs['locality'], hs['expected_n'])
 
-    use_good = hs_sort[:ind_cutoff]
-    use_bad = hs_sort[ind_cutoff:]
+    expected_n = [x['expected_n'] for x in hs_sort]
+    cutoff = max(expected_n) - (max(expected_n) - min(expected_n))*0.5
+    # print cutoff
+
+    use_good = []
+    use_bad = []
+    for x in hs_sort:
+        if x['expected_n'] >= cutoff:
+            use_good.append(x)
+        else:
+            use_bad.append(x)
+
+    good_marker_colors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple']
+    while len(good_marker_colors) < len(use_good):
+        good_marker_colors.extend(good_marker_colors)
+    bad_marker_colors = ['black']
+
+    # Print to screen
+    print '\nTop hotspots:'
+    for idx, hs in enumerate(use_good):
+        print '%i: %s , expected number of new birds = %.2f' % (idx+1, hs['locality'], hs['expected_n'])
+    print '\nadditional hotspots:'
+    for hs in use_bad:
+        print '%s , expected number of new birds = %.2f' % (hs['locality'], hs['expected_n'])
+
+    # Use top 20%:
+    # max_hotspots = 20
+    # if len(good_hotspots) > 1:
+    #     ind_cutoff = int(len(good_hotspots)*0.2)
+    #     cutoff = 'Top 20%'
+    # else:
+    #     ind_cutoff = len(good_hotspots)
+    #     cutoff = 'All good'
+    #
+    # print '\n%s of hotspots:' % cutoff
+    # for idx, hs in enumerate(hs_sort):
+    #     if idx == ind_cutoff:
+    #         print '\nOthers'
+    #     print '%i: %s , expected number of new birds = %.2f' % (idx+1, hs['locality'], hs['expected_n'])
+    # use_good = hs_sort[:ind_cutoff]
+    # use_bad = hs_sort[ind_cutoff:]
 
     # Generate URL with markers
     base_url = 'http://maps.googleapis.com/maps/api/staticmap?&size=1000x1000&sensor=false]'
 
     url_param = ''
     # markers for good hotspots
-    url_param = '&markers=size:mid%%7Ccolor:%s' %marker_colors[0]
+    url_param = '&markers=size:mid%%7Ccolor:%s' %good_marker_colors[0]
     ind = 0
     for x in use_good:
-        url_param += '&markers=size:mid%%7Ccolor:%s%%7Clabel:%i' %(marker_colors[ind], ind+1)
+        url_param += '&markers=size:mid%%7Ccolor:%s%%7Clabel:%i' %(good_marker_colors[ind], ind+1)
         url_param += '%%7C%f,%f' %(x['lat'], x['lng'])
         ind += 1
 
-    url_param += '&markers=size:tiny%%7Ccolor:%s' % marker_colors[-1]
+    url_param += '&markers=size:mid%%7Ccolor:%s' % bad_marker_colors[0]
     for x in use_bad:
         url_param += '%%7C%f,%f' %(x['lat'], x['lng'])
 
