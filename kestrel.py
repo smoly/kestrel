@@ -148,6 +148,10 @@ def get_hotspots(there, distance, month):
     # cursor.execute('''drop view checklists_temp''')
     cursor.close()
 
+    print 'Found %i promising hotspots:' % len(good_hotspots)
+    for x in good_hotspots:
+        print '    %s: %i checklists' % (x['locality'], x['n_checklists'])
+
     cnx.close()
     return good_hotspots, bad_hotspots
 
@@ -481,11 +485,13 @@ def google_map(good_hotspots):
 
     # Print to screen
     print '\nTop hotspots:'
-    for idx, hs in enumerate(use_good):
-        print '%i: %s , expected number of new birds = %.2f' % (idx+1, hs['locality'], hs['expected_n'])
-    print '\nadditional hotspots:'
-    for hs in use_bad:
-        print '%s , expected number of new birds = %.2f' % (hs['locality'], hs['expected_n'])
+    for idx_good, hs in enumerate(use_good):
+        print '%i: %s , expected number of new birds = %.2f' \
+              % (idx_good+1, hs['locality'], hs['expected_n'])
+    print '\nAdditional hotspots:'
+    for idx_bad, hs in enumerate(use_bad):
+        print '%i: %s , expected number of new birds = %.2f' \
+              % (idx_bad + idx_good + 2, hs['locality'], hs['expected_n'])
 
     # Use top 20%:
     # max_hotspots = 20
@@ -510,14 +516,16 @@ def google_map(good_hotspots):
     url_param = ''
     # markers for good hotspots
     url_param = '&markers=size:mid%%7Ccolor:%s' %good_marker_colors[0]
-    ind = 0
-    for x in use_good:
-        url_param += '&markers=size:mid%%7Ccolor:%s%%7Clabel:%i' %(good_marker_colors[ind], ind+1)
+    for idx_good, x in enumerate(use_good):
+        url_param += '&markers=size:mid%%7Ccolor:%s%%7Clabel:%i' \
+                     % (good_marker_colors[idx_good], idx_good+1)
         url_param += '%%7C%f,%f' %(x['lat'], x['lng'])
-        ind += 1
 
+    # markers for bad hotspots
     url_param += '&markers=size:mid%%7Ccolor:%s' % bad_marker_colors[0]
-    for x in use_bad:
+    for idx_bad, x in enumerate(use_bad):
+        url_param += '&markers=size:small%%7Ccolor:%s%%7Clabel:%i' \
+                     % (bad_marker_colors[0], idx_bad + idx_good +2)
         url_param += '%%7C%f,%f' %(x['lat'], x['lng'])
 
     image_bytes = urllib.urlopen(base_url+url_param).read()
