@@ -29,7 +29,7 @@ Red indicates a high probability of observing a bird (column) at a hotspot (row)
 - Birds on the x-axis include only those that have not been reported in your home location in the requested month. These are sorted by the average probability of observing each bird across all hotspots so you're most likely to see birds on the left of this graph.
 - Note how some birds (columns), like the Western gull and Anna's hummingbird, are common everywhere. You probably won't need to go to a special place to find them.
 - Hotspots are also sorted by the expected number of new birds at each location. The top-most hotspots will have the largest expected number of new birds. 
-- 
+
 And just for fun, we get a static google map with the top hotpots:
 
 ![sample map](https://cloud.githubusercontent.com/assets/2320606/5072006/738d2438-6e44-11e4-9157-512cfa7c9603.png)
