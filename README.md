@@ -2,7 +2,7 @@
 
 Traveling birder? Kestrel helps naturalists traveling to new places find birds that they cannot find at home. It helps you identify target locations to increase the chances of seeing birds that are not found in your stomping grounds. It also highlights regionally important or otherwise notable birds to help the you pick the best hot spot and brush up on field mark details.
 
-Data from the [eBird basic dataset](http://ebird.org/ebird/data/download) (Version: EBD_relNov-2013) and [eBird API](https://confluence.cornell.edu/display/CLOISAPI/eBird+API+1.1).
+Data from the [eBird basic dataset](http://ebird.org/ebird/data/download) (Version: EBD_relFeb-2014) and [eBird API](https://confluence.cornell.edu/display/CLOISAPI/eBird+API+1.1).
 
 ## Getting started
 This version requires building a local MySQL database from the eBird basic dataset available at http://ebird.org/ebird/data/download. The download is about 6GB and uncompresses to about 60GB. 
