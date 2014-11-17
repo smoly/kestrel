@@ -247,8 +247,8 @@ def get_birds(here, there, distance, month, good_hotspots):
                     text_col='green',
                     step_size=0.9/50,
                     lines_per_column = 30)
-        show()
 
+        show(block=False)
     return new_birds, sightings, here_birds, there_birds
 
 
@@ -396,7 +396,7 @@ def plot_hotspots(good_hotspots, prob_seen, titles):
     # [i.set_color("red") for i in plt.gca().get_xticklabels() if i.get_text() in all_notable]
 
     plt.title(titles['title'])
-    show()
+    show(block=False)
 
 
 def google_map(good_hotspots):
