@@ -1,8 +1,8 @@
 # to run
-# $ time cat create_database-2y.sql | mysql -uroot --table
+    # $ time cat create_database-2y.sql | mysql -uroot --table
 
 # Select database
-use kestrel2y; # Jan 2012- Feb 2014 as of 11/07/2014, from ebd_relFeb-2014 data dump
+use kestrel2y; # Jan 2012-Feb 2014 as of 11/07/2014, from ebd_relFeb-2014 data dump
 
 # ###################
 # # Create raw table
@@ -53,8 +53,9 @@ reviewed bit(1),
 reason varchar(255)
 
 );
-# describe raw;
-select('Created raw');
+describe raw;
+# select('Created raw');
+
 # load data local
 infile '/Users/Alexandra/PycharmProjects/trip_bird/data/raw-2y.tsv'
 into table raw
@@ -63,7 +64,6 @@ ignore 1 lines;
 show warnings;
 
 select count(*) as n_raw from raw;
-
 
 create index idx_id_sei on raw (locality_id, sampling_event_identifier); # 51 minutes
 create index idx_sei on raw (sampling_event_identifier);
@@ -140,7 +140,6 @@ create index idx_scientific_name on species(scientific_name);
 select('Created species indices');
 
 
-
 # ###################
 # # Create locations table
 
@@ -190,19 +189,15 @@ group by
   locality_id
 ;
 
-# # TODO make case SENSITIVE:
-alter table locations change locality locality varchar(255) not null collate utf8_bin;
-
+# # # TODO make case SENSITIVE:
+# alter table locations change locality locality varchar(255) not null collate utf8_bin;
 # change it back!
 # alter table locations change locality locality varchar(255) not null collate utf8_general_ci;
-
 
 select count(*) as n_locations from locations;
 
 # Test: the below should have the same number of rows as locations:
 # select count(*) from (select locality_id from raw group by locality_id) A;
-
-# drop index idx_locality on locations;
 
 create index idx_id on locations (id);
 create index idx_locality_type on locations (locality_type);
@@ -218,15 +213,10 @@ select('Created location indices');
 
 # # ###################
 # # Create checklists table
+# Done in two steps to avoid 2 group bys, which took forever
 
-# NOt included:
-# protocol_type
-# number_observers
-# reason - "in this dataset always "introduced-exotic" for not accepted
-
-
-drop table if exists checklists2;
-create table checklists2 (
+drop table if exists checklists;
+create table checklists (
   pk int not null auto_increment,
   observation_date date default 0 not null,
   time_observation_started timestamp default 0,
@@ -242,7 +232,7 @@ create table checklists2 (
   primary key (pk)
 );
 
-insert into checklists2 (
+insert into checklists (
   observation_date,
   time_observation_started,
   locality_id,
@@ -271,150 +261,22 @@ from raw
 group by sampling_event_identifier
 ; # 4 hours, 4.8 million rows
 
-create index idx_locality_id on checklists2 (locality_id);
+create index idx_locality_id on checklists (locality_id);
 
-
-# TODO NEXT: join checklists 2 to locations to get locations_pk; rename table
 # update statement
-update checklists2, locations
-set checklists2.locations_pk = locations.pk
-where locations.id = checklists2.locality_id
+update checklists, locations
+set checklists.locations_pk = locations.pk
+where locations.id = checklists.locality_id
 ; # 10 minutes
-rename table checklists2 to checklists;
 
 create index idx_sei on checklists (sampling_event_identifier);
 create index idx_locations_pk on checklists (locations_pk);
 
+# Other useful fields:
+# protocol_type
+# number_observers
+# reason - "in this dataset always "introduced-exotic" for not accepted
 
-# locations.id,
-# join locations on locations.id = raw.locality_id
-# where locations.locality_type = 'H'
-
-
-
-# drop table if exists checklists;
-# create table checklists (
-#   pk int not null auto_increment,
-#   observation_date date default 0 not null,
-#   time_observation_started timestamp default 0,
-#   raw_locality_id varchar(100),
-#   locality_pk int,
-#   sampling_event_identifier varchar(255),
-#   n_sightings_per_checklist int,
-#   duration_minutes int,
-#   all_species_reported bit(1),
-#   group_identifier varchar(255),
-#   approved bit(1),
-#   reviewed bit(1),
-#   reason varchar(255),
-#   primary key (pk)
-# );
-#
-# insert into checklists (
-#   observation_date,
-#   time_observation_started,
-#   raw_locality_id,
-#   locality_pk,
-#   sampling_event_identifier,
-#   n_sightings_per_checklist,
-#   duration_minutes,
-#   all_species_reported,
-#   group_identifier,
-#   approved,
-#   reviewed
-#    )
-# select
-#     observation_date,
-#     time_observation_started,
-#     raw.locality_id,
-#     locations.pk,
-#     sampling_event_identifier,
-#     count(*),
-#     duration_minutes,
-#     all_species_reported,
-#     group_identifier,
-#     approved,
-#     reviewed
-# from raw
-# join locations on locations.id = raw.locality_id
-# group by locations.id, sampling_event_identifier
-# ;
-#
-#
-# where locations.locality_type = 'H'
-
-
-# 
-# drop table if exists checklists;
-# create table checklists (
-#   pk int not null auto_increment,
-#   observation_date date default 0 not null,
-#   time_observation_started timestamp default 0,
-#   comments varchar(255),
-#   observer_pk int not null,
-#   location_pk int not null,
-#   sampling_event_identifier varchar(255),
-#   protocol_type varchar(255),
-#   project_code varchar(255),
-#   duration_minutes int,
-#   effort_distance_km double,
-#   effort_area_ha double,
-#   number_observers int,
-#   all_species_reported bit(1),
-#   group_identifier varchar(255),
-#   approved bit(1),
-#   reviewed bit(1),
-#   reason varchar(255),
-#   primary key (pk)
-# );
-# 
-# insert into checklists (
-#   observation_date,
-#   time_observation_started,
-#   comments,
-#   observer_pk,
-#   location_pk,
-#   sampling_event_identifier,
-#   protocol_type,
-#   project_code,
-#   duration_minutes,
-#   effort_distance_km,
-#   effort_area_ha,
-#   number_observers,
-#   all_species_reported,
-#   group_identifier,
-#   approved,
-#   reviewed,
-#   reason
-# )
-# select
-#   observation_date,
-#   time_observation_started,
-#   trip_comments,
-#   observers.pk,
-#   locations.pk,
-#   sampling_event_identifier,
-#   protocol_type,
-#   project_code,
-#   duration_minutes,
-#   effort_distance_km,
-#   effort_area_ha,
-#   number_observers,
-#   all_species_reported,
-#   group_identifier,
-#   approved,
-#   reviewed,
-#   reason
-# from observers
-#   join raw on observers.id = raw.observer_id
-#   join locations on locations.locality = raw.locality
-# group by sampling_event_identifier
-# ;
-# 
-# create index idx_observation_date on checklists(observation_date);
-# create index idx_sampling_event_identifier on checklists(sampling_event_identifier);
-# 
-# select count(*) as n_checklists from checklists;
 
 # ###################
 # # Create sightings table
