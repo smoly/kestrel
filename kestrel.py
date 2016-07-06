@@ -10,6 +10,7 @@ from matplotlib_venn import venn2
 
 # import kestrel as ks; reload(ks); from kestrel import *
 
+# throwaway test
 plot_on = 1
 
 
@@ -33,7 +34,7 @@ def find_good_hotspots(here, there, distance, month):
         return
 
     # Get birds that cannot be found at home
-    new_birds, sightings, _, _ = get_birds(here, there, distance, month, good_hotspots)
+    new_birds, sightings, _, _ = get_new_there_birds(here, there, distance, month, good_hotspots)
 
     # Compute the probability seen of each bird-location
     prob_seen, good_hotspots_sorted, new_birds_sorted\
@@ -117,11 +118,10 @@ def get_hotspots(there, distance, month):
     cnx.close()
     return good_hotspots, bad_hotspots
 
-
-def get_birds(here, there, distance, month, good_hotspots):
+def get_new_there_birds(here, there, distance, month, good_hotspots):
     ''' get list of birds that have been observed 'there' but not 'here'
 
-    new_birds, sightings, here_birds, there_birds = get_birds(here, there, distance, month)
+    new_birds, sightings, here_birds, there_birds = get_new_there_birds(here, there, distance, month)
 
     :param here: google-able location name of home
     :param distance: search radius in km
@@ -250,6 +250,13 @@ def get_birds(here, there, distance, month, good_hotspots):
 
         show(block=False)
     return new_birds, sightings, here_birds, there_birds
+
+
+def get_new_my_birds:
+    ''' find birds that I haven't seen yet'''
+    print('write me!')
+    #TODO: take as input CSV
+    #TODO: compare list of birds to birds in hotspots??!!
 
 
 def get_probability(new_birds, sightings, good_hotspots):
